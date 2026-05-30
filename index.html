@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VoxelForge — 3D model to .schem</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+<style>
+  :root{
+    --bg:#0b1220; --bg2:#0f1830; --panel:#111c33; --panel2:#16243f;
+    --line:#1f3357; --line2:#2a4670;
+    --text:#e6ecf7; --muted:#8aa0c4; --faint:#5f7398;
+    --gold:#f5c451; --gold2:#e0a73a; --accent:#4aa3d8;
+    --good:#5ec27a; --bad:#e0584f;
+    --radius:10px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden}
+  body{
+    background:radial-gradient(1200px 700px at 70% -10%, #16243f 0%, var(--bg) 55%);
+    color:var(--text); font-family:'Outfit',system-ui,sans-serif; font-size:14px;
+  }
+  .app{display:flex;height:100vh;width:100vw}
+
+  /* ---------- left panel ---------- */
+  .panel{
+    width:336px;min-width:336px;height:100%;
+    background:linear-gradient(180deg,var(--panel) 0%, #0e1a30 100%);
+    border-right:1px solid var(--line);
+    display:flex;flex-direction:column;
+    box-shadow:14px 0 40px -20px #000;
+    z-index:5;
+  }
+  .brand{
+    padding:18px 20px 16px;border-bottom:1px solid var(--line);
+    display:flex;align-items:center;gap:12px;
+  }
+  .brand .mark{
+    width:34px;height:34px;border-radius:8px;flex:none;
+    background:linear-gradient(135deg,var(--gold),var(--gold2));
+    box-shadow:0 4px 14px -4px var(--gold2), inset 0 0 0 1px #ffffff22;
+    position:relative;
+  }
+  .brand .mark::after{content:"";position:absolute;inset:8px;border-radius:3px;
+    background:repeating-linear-gradient(45deg,#0b1220 0 3px,transparent 3px 6px);opacity:.55}
+  .brand h1{font-size:17px;font-weight:700;margin:0;letter-spacing:.3px}
+  .brand h1 span{color:var(--gold)}
+  .brand .sub{font-size:11px;color:var(--faint);font-family:'JetBrains Mono',monospace;margin-top:1px}
+
+  .scroll{overflow-y:auto;padding:6px 16px 16px;flex:1}
+  .scroll::-webkit-scrollbar{width:9px}
+  .scroll::-webkit-scrollbar-thumb{background:var(--line2);border-radius:9px;border:2px solid transparent;background-clip:padding-box}
+
+  .group{margin-top:18px}
+  .group > .label{
+    font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:1.4px;
+    text-transform:uppercase;color:var(--gold);margin-bottom:9px;display:flex;align-items:center;gap:8px;
+  }
+  .group > .label::after{content:"";height:1px;flex:1;background:linear-gradient(90deg,var(--line2),transparent)}
+
+  .drop{
+    border:1.5px dashed var(--line2);border-radius:var(--radius);padding:16px;text-align:center;
+    cursor:pointer;transition:.18s;background:#0c1730;
+  }
+  .drop:hover{border-color:var(--gold2);background:#101e3a}
+  .drop.hot{border-color:var(--gold);background:#13233f}
+  .drop .big{font-size:13px;font-weight:500}
+  .drop .small{font-size:11px;color:var(--faint);margin-top:4px;font-family:'JetBrains Mono',monospace}
+  .filename{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--accent);margin-top:8px;word-break:break-all}
+
+  .field{margin-bottom:13px}
+  .field .row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+  .field .name{font-size:12.5px;color:var(--muted)}
+  .field .val{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text);font-weight:500}
+  input[type=range]{-webkit-appearance:none;width:100%;height:4px;border-radius:4px;background:var(--line2);outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;
+    background:var(--gold);cursor:pointer;box-shadow:0 0 0 4px #f5c45122;border:2px solid #0b1220}
+  input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:var(--gold);cursor:pointer;border:2px solid #0b1220}
+
+  .seg{display:flex;background:#0c1730;border:1px solid var(--line);border-radius:9px;padding:3px;gap:3px}
+  .seg button{flex:1;border:0;background:transparent;color:var(--muted);font-family:inherit;font-size:12px;
+    padding:7px 0;border-radius:6px;cursor:pointer;transition:.15s;font-weight:500}
+  .seg button.on{background:linear-gradient(180deg,var(--panel2),#13243f);color:var(--gold);box-shadow:0 1px 0 #ffffff10 inset, 0 2px 8px -4px #000}
+
+  select{width:100%;background:#0c1730;color:var(--text);border:1px solid var(--line);border-radius:8px;
+    padding:9px 10px;font-family:inherit;font-size:13px;cursor:pointer;appearance:none;
+    background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+    background-position:calc(100% - 16px) 52%,calc(100% - 11px) 52%;background-size:5px 5px;background-repeat:no-repeat}
+  select:focus{outline:none;border-color:var(--gold2)}
+
+  .btn{width:100%;border:0;border-radius:10px;padding:12px;font-family:inherit;font-size:14px;font-weight:600;
+    cursor:pointer;transition:.15s;display:flex;align-items:center;justify-content:center;gap:8px}
+  .btn.primary{background:linear-gradient(180deg,var(--gold),var(--gold2));color:#1a1206;
+    box-shadow:0 6px 18px -8px var(--gold2),inset 0 1px 0 #fff6}
+  .btn.primary:hover{filter:brightness(1.06)}
+  .btn.primary:active{transform:translateY(1px)}
+  .btn.ghost{background:#0c1730;color:var(--text);border:1px solid var(--line2)}
+  .btn.ghost:hover{border-color:var(--gold2);color:var(--gold)}
+  .btn:disabled{opacity:.4;cursor:not-allowed;filter:none;transform:none}
+
+  /* ---------- stage ---------- */
+  .stage{flex:1;position:relative;min-width:0}
+  #canvas{display:block;width:100%;height:100%}
+  .overlay{position:absolute;left:18px;top:16px;display:flex;gap:8px;flex-wrap:wrap;pointer-events:none}
+  .chip{background:#0b1220cc;backdrop-filter:blur(8px);border:1px solid var(--line2);border-radius:8px;
+    padding:7px 11px;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--muted);pointer-events:auto}
+  .chip b{color:var(--gold);font-weight:600}
+
+  .viewtoggle{position:absolute;right:18px;top:16px;pointer-events:auto}
+  .legend{position:absolute;right:18px;bottom:16px;background:#0b1220cc;backdrop-filter:blur(8px);
+    border:1px solid var(--line2);border-radius:10px;padding:11px 13px;max-width:230px;pointer-events:auto}
+  .legend .ttl{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--gold);text-transform:uppercase;margin-bottom:8px}
+  .legend .item{display:flex;align-items:center;gap:8px;font-size:11.5px;margin:4px 0;color:var(--muted)}
+  .legend .sw{width:13px;height:13px;border-radius:3px;border:1px solid #ffffff22;flex:none}
+  .legend .more{font-size:10.5px;color:var(--faint);margin-top:6px;font-family:'JetBrains Mono',monospace}
+
+  .toast{position:absolute;left:50%;bottom:22px;transform:translateX(-50%) translateY(40px);
+    background:#0b1220ee;border:1px solid var(--line2);border-radius:10px;padding:11px 18px;font-size:13px;
+    opacity:0;transition:.3s;pointer-events:none;box-shadow:0 10px 30px -10px #000}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.good{border-color:#5ec27a55} .toast.bad{border-color:#e0584f55;color:#ffbdb8}
+
+  .foot{padding:12px 16px;border-top:1px solid var(--line);font-size:10.5px;color:var(--faint);
+    font-family:'JetBrains Mono',monospace;line-height:1.5}
+  .hint{font-size:11px;color:var(--faint);margin-top:6px;line-height:1.45}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- LEFT PANEL -->
+  <aside class="panel">
+    <div class="brand">
+      <div class="mark"></div>
+      <div>
+        <h1>Voxel<span>Forge</span></h1>
+        <div class="sub">model &rarr; .schem</div>
+      </div>
+    </div>
+
+    <div class="scroll">
+      <div class="group">
+        <div class="label">Source model</div>
+        <div class="drop" id="drop">
+          <div class="big">Drop <b>.obj</b> here</div>
+          <div class="small">+ optional .mtl for colors</div>
+          <div class="filename" id="fname">using built-in sample</div>
+        </div>
+        <input type="file" id="file" accept=".obj,.mtl" multiple hidden>
+        <div class="hint">No texture support yet. Colors come from .mtl material diffuse (Kd) or per-face vertex colors.</div>
+      </div>
+
+      <div class="group">
+        <div class="label">Resolution</div>
+        <div class="field">
+          <div class="row"><span class="name">Size along axis</span><span class="val" id="sizeVal">48</span></div>
+          <input type="range" id="size" min="8" max="160" value="48">
+        </div>
+        <div class="field">
+          <div class="row"><span class="name">Constraint axis</span></div>
+          <div class="seg" id="axis">
+            <button data-a="x">X</button><button data-a="y" class="on">Y</button><button data-a="z">Z</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="label">Block palette</div>
+        <select id="palette">
+          <option value="all" selected>All blocks (309) — max fidelity</option>
+          <option value="schematic_friendly">Schematic-friendly (183) — survival-safe</option>
+          <option value="colourful">Colourful (80) — vivid blocks only</option>
+          <option value="concrete">Concrete (16)</option>
+          <option value="wool">Wool (16)</option>
+          <option value="greyscale">Greyscale (49)</option>
+        </select>
+        <div class="field" style="margin-top:13px">
+          <div class="row"><span class="name">Match mode</span></div>
+          <div class="seg" id="match">
+            <button data-m="redmean" class="on">Perceptual</button><button data-m="rgb">RGB</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="label">Export target</div>
+        <select id="dataver">
+          <option value="4671">Minecraft 1.21.11 (4671)</option>
+          <option value="4189">Minecraft 1.21.4 (4189)</option>
+          <option value="3955" selected>Minecraft 1.21.1 (3955)</option>
+          <option value="3465">Minecraft 1.20.1 (3465)</option>
+          <option value="3337">Minecraft 1.19.4 (3337)</option>
+        </select>
+      </div>
+
+      <div class="group">
+        <button class="btn primary" id="voxelize" style="margin-bottom:9px">Voxelize</button>
+        <button class="btn ghost" id="export" disabled>Export .schem</button>
+      </div>
+    </div>
+
+    <div class="foot">
+      Sponge Schematic v2 &bull; load with<br>WorldEdit <b style="color:var(--gold)">//schem load</b> or Litematica
+    </div>
+  </aside>
+
+  <!-- STAGE -->
+  <main class="stage">
+    <canvas id="canvas"></canvas>
+    <div class="overlay">
+      <div class="chip">dims <b id="cDims">—</b></div>
+      <div class="chip">blocks <b id="cBlocks">—</b></div>
+      <div class="chip">palette <b id="cPal">—</b></div>
+    </div>
+    <div class="viewtoggle">
+      <div class="seg" id="view" style="width:200px">
+        <button data-v="mesh">Original</button><button data-v="voxel" class="on">Voxelized</button>
+      </div>
+    </div>
+    <div class="legend" id="legend" style="display:none">
+      <div class="ttl">Blocks used</div>
+      <div id="legendItems"></div>
+    </div>
+    <div class="toast" id="toast"></div>
+  </main>
+</div>
+
+<script>
+"use strict";
+/* =========================================================================
+   VoxelForge — based on the ObjToSchematic pipeline (voxelise -> colour
+   match -> Sponge v2 .schem). The .schem writer below was validated against
+   prismarine-nbt before being embedded here.
+   ========================================================================= */
+
+/* ---------- Minecraft block palette (real average colours from ObjToSchematic atlas) ---------- */
+const BLOCK_COLORS={"acacia_log":"#775e4c",
+"acacia_log_horizontal":"#775e4c",
+"acacia_planks":"#a85a32",
+"acacia_wood":"#676157",
+"amethyst_block":"#8662bf",
+"ancient_debris":"#5f4139",
+"andesite":"#888889",
+"bamboo_block":"#838f3b",
+"bamboo_mosaic":"#beaa4e",
+"bamboo_planks":"#c1ad50",
+"barrel":"#725533",
+"basalt":"#4c4c51",
+"bedrock":"#555555",
+"birch_log":"#d1cbb9",
+"birch_log_horizontal":"#d1cbb9",
+"birch_planks":"#c0af79",
+"birch_wood":"#d9d7d2",
+"blackstone":"#2a2429",
+"black_concrete":"#080a0f",
+"black_concrete_powder":"#191b20",
+"black_glazed_terracotta":"#441e20",
+"black_stained_glass":"#191919",
+"black_terracotta":"#251710",
+"black_wool":"#15151a",
+"blue_concrete":"#2d2f8f",
+"blue_concrete_powder":"#4649a7",
+"blue_glazed_terracotta":"#2f418b",
+"blue_ice":"#74a8fd",
+"blue_stained_glass":"#334cb2",
+"blue_terracotta":"#4a3c5b",
+"blue_wool":"#35399d",
+"bone_block":"#dfdbc6",
+"bookshelf":"#846b42",
+"brain_coral_block":"#cf5b9f",
+"bricks":"#976253",
+"brown_concrete":"#603c20",
+"brown_concrete_powder":"#7e5536",
+"brown_glazed_terracotta":"#786a56",
+"brown_mushroom_block":"#957051",
+"brown_stained_glass":"#664c33",
+"brown_terracotta":"#4d3324",
+"brown_wool":"#724829",
+"bubble_coral_block":"#a51aa2",
+"budding_amethyst":"#8460bb",
+"calcite":"#dfe0dd",
+"cartography_table":"#4c3722",
+"cherry_leaves":"#e5adc2",
+"cherry_log":"#62454b",
+"cherry_planks":"#e3b3ad",
+"cherry_wood":"#37212c",
+"chiseled_deepslate":"#363637",
+"chiseled_nether_bricks":"#2f181c",
+"chiseled_polished_blackstone":"#363139",
+"chiseled_quartz_block":"#e8e3da",
+"chiseled_red_sandstone":"#b7611d",
+"chiseled_sandstone":"#dbcfa0",
+"chiseled_stone_bricks":"#787778",
+"clay":"#a1a6b3",
+"coal_block":"#101010",
+"coal_ore":"#6a6a69",
+"coarse_dirt":"#77563b",
+"cobbled_deepslate":"#4d4d51",
+"cobblestone":"#807f80",
+"copper_block":"#c06c50",
+"copper_ore":"#7d7e78",
+"cracked_deepslate_bricks":"#414141",
+"cracked_deepslate_tiles":"#353535",
+"cracked_nether_bricks":"#281418",
+"cracked_polished_blackstone_bricks":"#2c262c",
+"cracked_stone_bricks":"#767676",
+"crafting_table":"#856741",
+"crimson_hyphae":"#5d1a1e",
+"crimson_nylium":"#6e1e1d",
+"crimson_planks":"#653147",
+"crimson_stem":"#64222c",
+"crying_obsidian":"#210a3c",
+"cut_copper":"#bf6b51",
+"cut_red_sandstone":"#bb6420",
+"cut_sandstone":"#dcd1a3",
+"cyan_concrete":"#157788",
+"cyan_concrete_powder":"#25949d",
+"cyan_glazed_terracotta":"#34777d",
+"cyan_stained_glass":"#4c7f99",
+"cyan_terracotta":"#575b5b",
+"cyan_wool":"#158a91",
+"dark_oak_log":"#3f2e19",
+"dark_oak_log_horizontal":"#3f2e19",
+"dark_oak_planks":"#432b14",
+"dark_oak_wood":"#3c2f1a",
+"dark_prismarine":"#345c4c",
+"dead_brain_coral_block":"#7c7672",
+"dead_bubble_coral_block":"#847c77",
+"dead_fire_coral_block":"#847c78",
+"dead_horn_coral_block":"#867e7a",
+"dead_tube_coral_block":"#827b78",
+"deepslate":"#525255",
+"deepslate_bricks":"#474747",
+"deepslate_coal_ore":"#4a4a4c",
+"deepslate_copper_ore":"#5c5d59",
+"deepslate_diamond_ore":"#536a6b",
+"deepslate_emerald_ore":"#4e6858",
+"deepslate_gold_ore":"#73674e",
+"deepslate_iron_ore":"#6b645f",
+"deepslate_lapis_ore":"#505b73",
+"deepslate_redstone_ore":"#69494b",
+"deepslate_tiles":"#373737",
+"diamond_block":"#62ede4",
+"diamond_ore":"#798d8d",
+"diorite":"#bdbcbd",
+"dirt":"#866043",
+"dripstone_block":"#866c5d",
+"emerald_block":"#2acb58",
+"emerald_ore":"#6c8874",
+"end_stone":"#dcdf9e",
+"end_stone_bricks":"#dae0a2",
+"exposed_copper":"#a17e68",
+"exposed_cut_copper":"#9b7a65",
+"fire_coral_block":"#a4232f",
+"fletching_table":"#bba77b",
+"frosted_ice_0":"#8cb5fd",
+"frosted_ice_1":"#8cb5fd",
+"frosted_ice_2":"#8ab4fc",
+"frosted_ice_3":"#87b2fc",
+"gilded_blackstone":"#382b26",
+"glass":"#b0d6db",
+"glowstone":"#ac8354",
+"gold_block":"#f6d03e",
+"gold_ore":"#91866b",
+"granite":"#956756",
+"gravel":"#847f7f",
+"gray_concrete":"#373a3e",
+"gray_concrete_powder":"#4d5155",
+"gray_glazed_terracotta":"#535a5e",
+"gray_stained_glass":"#4c4c4c",
+"gray_terracotta":"#3a2a24",
+"gray_wool":"#3f4448",
+"green_concrete":"#495b24",
+"green_concrete_powder":"#61772d",
+"green_glazed_terracotta":"#758e43",
+"green_stained_glass":"#667f33",
+"green_terracotta":"#4c532a",
+"green_wool":"#556e1c",
+"hay_block":"#a6891e",
+"hay_block_horizontal":"#a6891e",
+"honeycomb_block":"#e5941e",
+"horn_coral_block":"#d8c842",
+"ice":"#92b8fe",
+"iron_block":"#dcdcdc",
+"iron_ore":"#88817b",
+"jungle_log":"#6b5228",
+"jungle_log_horizontal":"#6b5228",
+"jungle_planks":"#a07351",
+"jungle_wood":"#554419",
+"lapis_block":"#1f438c",
+"lapis_ore":"#6b768d",
+"light_blue_concrete":"#2489c7",
+"light_blue_concrete_powder":"#4ab5d5",
+"light_blue_glazed_terracotta":"#5fa5d1",
+"light_blue_stained_glass":"#6699d8",
+"light_blue_terracotta":"#716d8a",
+"light_blue_wool":"#3aafd9",
+"light_gray_concrete":"#7d7d73",
+"light_gray_concrete_powder":"#9b9b94",
+"light_gray_glazed_terracotta":"#90a6a8",
+"light_gray_stained_glass":"#999999",
+"light_gray_terracotta":"#876b62",
+"light_gray_wool":"#8e8e87",
+"lime_concrete":"#5ea918",
+"lime_concrete_powder":"#7dbd2a",
+"lime_glazed_terracotta":"#a3c637",
+"lime_stained_glass":"#7fcc19",
+"lime_terracotta":"#687635",
+"lime_wool":"#70b91a",
+"lodestone":"#818285",
+"magenta_concrete":"#a9309f",
+"magenta_concrete_powder":"#c154b9",
+"magenta_glazed_terracotta":"#d064c0",
+"magenta_stained_glass":"#b24cd8",
+"magenta_terracotta":"#96586d",
+"magenta_wool":"#be45b4",
+"magma_block":"#8e3f1f",
+"mangrove_log":"#5a3d2a",
+"mangrove_log_horizontal":"#5a3d2a",
+"mangrove_planks":"#763631",
+"mangrove_wood":"#544329",
+"melon":"#71921e",
+"mossy_cobblestone":"#6e765f",
+"mossy_stone_bricks":"#737969",
+"moss_block":"#596e2d",
+"mud":"#3c393d",
+"muddy_mangrove_roots":"#453b2f",
+"mud_bricks":"#89684f",
+"mushroom_stem":"#cbc5ba",
+"mycelium":"#755b4c",
+"netherite_block":"#433d40",
+"netherrack":"#622626",
+"nether_bricks":"#2c161a",
+"nether_gold_ore":"#73372a",
+"nether_quartz_ore":"#76423e",
+"nether_wart_block":"#730302",
+"note_block":"#593b29",
+"oak_log":"#7b613a",
+"oak_log_horizontal":"#7b613a",
+"oak_planks":"#a2834f",
+"oak_wood":"#6d5533",
+"obsidian":"#0f0b19",
+"ochre_froglight":"#f7edbe",
+"ochre_froglight_horizontal":"#f7edbe",
+"orange_concrete":"#e06101",
+"orange_concrete_powder":"#e38420",
+"orange_glazed_terracotta":"#9b935c",
+"orange_stained_glass":"#d87f33",
+"orange_terracotta":"#a25426",
+"orange_wool":"#f17614",
+"oxidized_copper":"#52a385",
+"oxidized_cut_copper":"#509a7e",
+"packed_ice":"#8eb4fa",
+"packed_mud":"#8e6b50",
+"pearlescent_froglight":"#efe6e8",
+"pearlescent_froglight_horizontal":"#efe6e8",
+"pink_concrete":"#d6658f",
+"pink_concrete_powder":"#e599b5",
+"pink_glazed_terracotta":"#eb9bb6",
+"pink_stained_glass":"#f27fa5",
+"pink_terracotta":"#a24e4f",
+"pink_wool":"#ee8dac",
+"podzol":"#775535",
+"polished_andesite":"#848786",
+"polished_basalt":"#5c5c5f",
+"polished_blackstone":"#353139",
+"polished_blackstone_bricks":"#302b32",
+"polished_deepslate":"#484949",
+"polished_diorite":"#c1c1c3",
+"polished_granite":"#9a6b59",
+"prismarine":"#63a292",
+"prismarine_bricks":"#63ac9e",
+"purple_concrete":"#64209c",
+"purple_concrete_powder":"#8438b2",
+"purple_glazed_terracotta":"#6e3098",
+"purple_stained_glass":"#7f3fb2",
+"purple_terracotta":"#764656",
+"purple_wool":"#7a2aad",
+"purpur_block":"#aa7eaa",
+"purpur_pillar":"#ac81ac",
+"purpur_pillar_horizontal":"#ac81ac",
+"quartz_block":"#ece6df",
+"quartz_bricks":"#ebe5de",
+"quartz_pillar":"#ebe6e0",
+"quartz_pillar_horizontal":"#ebe6e0",
+"raw_copper_block":"#9a6a4f",
+"raw_gold_block":"#dea92f",
+"raw_iron_block":"#a6886b",
+"redstone_block":"#b01905",
+"redstone_lamp":"#5f371e",
+"redstone_ore":"#8c6e6e",
+"red_concrete":"#8e2121",
+"red_concrete_powder":"#a83633",
+"red_glazed_terracotta":"#b63c35",
+"red_mushroom_block":"#c82f2d",
+"red_nether_bricks":"#460709",
+"red_sand":"#bf6721",
+"red_sandstone":"#ba631d",
+"red_stained_glass":"#993333",
+"red_terracotta":"#8f3d2f",
+"red_wool":"#a12723",
+"reinforced_deepslate":"#5f645e",
+"rooted_dirt":"#90684d",
+"sand":"#dbcfa3",
+"sandstone":"#dacd9e",
+"sculk":"#0d1c22",
+"sea_lantern":"#acc8bf",
+"shroomlight":"#f19347",
+"smithing_table":"#3a2729",
+"smooth_basalt":"#49484e",
+"smooth_quartz":"#ede6e0",
+"smooth_red_sandstone":"#b5621f",
+"smooth_sandstone":"#e0d6aa",
+"smooth_stone":"#9f9f9f",
+"smooth_stone_slab_double":"#a5a5a5",
+"snow_block":"#f9fefe",
+"soul_sand":"#513e33",
+"soul_soil":"#4c3a2f",
+"sponge":"#c4c04b",
+"spruce_log":"#4b341b",
+"spruce_log_horizontal":"#4b341b",
+"spruce_planks":"#735531",
+"spruce_wood":"#3b2611",
+"stone":"#7e7e7e",
+"stone_bricks":"#7a7a7a",
+"stripped_acacia_log":"#ac5c39",
+"stripped_acacia_log_horizontal":"#ac5c39",
+"stripped_acacia_wood":"#af5d3c",
+"stripped_bamboo_block":"#bca84e",
+"stripped_birch_log":"#c3af76",
+"stripped_birch_log_horizontal":"#c3af76",
+"stripped_birch_wood":"#c5b076",
+"stripped_cherry_log":"#d99898",
+"stripped_cherry_wood":"#d79195",
+"stripped_crimson_hyphae":"#89395a",
+"stripped_crimson_stem":"#843958",
+"stripped_dark_oak_log":"#473520",
+"stripped_dark_oak_log_horizontal":"#473520",
+"stripped_dark_oak_wood":"#493924",
+"stripped_jungle_log":"#aa8254",
+"stripped_jungle_log_horizontal":"#aa8254",
+"stripped_jungle_wood":"#ab8555",
+"stripped_mangrove_log":"#74332e",
+"stripped_mangrove_log_horizontal":"#74332e",
+"stripped_mangrove_wood":"#783630",
+"stripped_oak_log":"#ac8b53",
+"stripped_oak_log_horizontal":"#ac8b53",
+"stripped_oak_wood":"#b19056",
+"stripped_spruce_log":"#705732",
+"stripped_spruce_log_horizontal":"#705732",
+"stripped_spruce_wood":"#745a34",
+"stripped_warped_hyphae":"#3a9794",
+"stripped_warped_stem":"#38908c",
+"suspicious_gravel_0":"#827d7c",
+"suspicious_gravel_1":"#817c7b",
+"suspicious_gravel_2":"#7e7978",
+"suspicious_gravel_3":"#7c7776",
+"suspicious_sand_0":"#dacc9f",
+"suspicious_sand_1":"#d9cb9d",
+"suspicious_sand_2":"#d6c797",
+"suspicious_sand_3":"#d3c191",
+"target":"#e4aea5",
+"terracotta":"#985e44",
+"tinted_glass":"#2c262f",
+"tube_coral_block":"#3157cf",
+"tuff":"#6c6d67",
+"verdant_froglight":"#d9eed7",
+"verdant_froglight_horizontal":"#d9eed7",
+"warped_hyphae":"#3a3b4e",
+"warped_nylium":"#48433f",
+"warped_planks":"#2b6963",
+"warped_stem":"#384c59",
+"warped_wart_block":"#177879",
+"weathered_copper":"#6c996e",
+"weathered_cut_copper":"#6d916c",
+"wet_sponge":"#abb546",
+"white_concrete":"#cfd5d6",
+"white_concrete_powder":"#e2e3e4",
+"white_glazed_terracotta":"#bcd4cb",
+"white_stained_glass":"#ffffff",
+"white_terracotta":"#d2b2a1",
+"white_wool":"#eaeced",
+"yellow_concrete":"#f1af15",
+"yellow_concrete_powder":"#e9c737",
+"yellow_glazed_terracotta":"#eac059",
+"yellow_stained_glass":"#e5e533",
+"yellow_terracotta":"#ba8523",
+"yellow_wool":"#f9c628"};
+const PRESETS={all:["acacia_log", "acacia_planks", "acacia_wood", "amethyst_block", "ancient_debris", "andesite", "barrel", "basalt", "bedrock", "birch_log", "birch_planks", "birch_wood", "blackstone", "black_concrete", "black_concrete_powder", "black_glazed_terracotta", "black_stained_glass", "black_terracotta", "black_wool", "blue_concrete", "blue_concrete_powder", "blue_glazed_terracotta", "blue_ice", "blue_stained_glass", "blue_terracotta", "blue_wool", "bone_block", "bookshelf", "brain_coral_block", "bricks", "brown_concrete", "brown_concrete_powder", "brown_glazed_terracotta", "brown_mushroom_block", "brown_stained_glass", "brown_terracotta", "brown_wool", "bubble_coral_block", "budding_amethyst", "calcite", "cartography_table", "chiseled_deepslate", "chiseled_nether_bricks", "chiseled_polished_blackstone", "chiseled_quartz_block", "chiseled_red_sandstone", "chiseled_sandstone", "chiseled_stone_bricks", "clay", "coal_block", "coal_ore", "coarse_dirt", "cobbled_deepslate", "cobblestone", "copper_block", "copper_ore", "cracked_deepslate_bricks", "cracked_deepslate_tiles", "cracked_nether_bricks", "cracked_polished_blackstone_bricks", "cracked_stone_bricks", "crafting_table", "crimson_hyphae", "crimson_nylium", "crimson_planks", "crimson_stem", "crying_obsidian", "cut_copper", "cut_red_sandstone", "cut_sandstone", "cyan_concrete", "cyan_concrete_powder", "cyan_glazed_terracotta", "cyan_stained_glass", "cyan_terracotta", "cyan_wool", "dark_oak_log", "dark_oak_planks", "dark_oak_wood", "dark_prismarine", "dead_brain_coral_block", "dead_bubble_coral_block", "dead_fire_coral_block", "dead_horn_coral_block", "dead_tube_coral_block", "deepslate", "deepslate_bricks", "deepslate_coal_ore", "deepslate_copper_ore", "deepslate_diamond_ore", "deepslate_emerald_ore", "deepslate_gold_ore", "deepslate_iron_ore", "deepslate_lapis_ore", "deepslate_redstone_ore", "deepslate_tiles", "diamond_block", "diamond_ore", "diorite", "dirt", "dripstone_block", "emerald_block", "emerald_ore", "end_stone", "end_stone_bricks", "exposed_copper", "exposed_cut_copper", "fire_coral_block", "fletching_table", "gilded_blackstone", "glass", "glowstone", "gold_block", "gold_ore", "granite", "gravel", "gray_concrete", "gray_concrete_powder", "gray_glazed_terracotta", "gray_stained_glass", "gray_terracotta", "gray_wool", "green_concrete", "green_concrete_powder", "green_glazed_terracotta", "green_stained_glass", "green_terracotta", "green_wool", "hay_block", "honeycomb_block", "horn_coral_block", "ice", "iron_block", "iron_ore", "jungle_log", "jungle_planks", "jungle_wood", "lapis_block", "lapis_ore", "light_blue_concrete", "light_blue_concrete_powder", "light_blue_glazed_terracotta", "light_blue_stained_glass", "light_blue_terracotta", "light_blue_wool", "light_gray_concrete", "light_gray_concrete_powder", "light_gray_glazed_terracotta", "light_gray_stained_glass", "light_gray_terracotta", "light_gray_wool", "lime_concrete", "lime_concrete_powder", "lime_glazed_terracotta", "lime_stained_glass", "lime_terracotta", "lime_wool", "lodestone", "magenta_concrete", "magenta_concrete_powder", "magenta_glazed_terracotta", "magenta_stained_glass", "magenta_terracotta", "magenta_wool", "magma_block", "mangrove_log", "mangrove_planks", "mangrove_wood", "melon", "mossy_cobblestone", "mossy_stone_bricks", "moss_block", "mud", "muddy_mangrove_roots", "mud_bricks", "mushroom_stem", "mycelium", "netherite_block", "netherrack", "nether_bricks", "nether_gold_ore", "nether_quartz_ore", "nether_wart_block", "note_block", "oak_log", "oak_planks", "oak_wood", "obsidian", "ochre_froglight", "orange_concrete", "orange_concrete_powder", "orange_glazed_terracotta", "orange_stained_glass", "orange_terracotta", "orange_wool", "oxidized_copper", "oxidized_cut_copper", "packed_ice", "packed_mud", "pearlescent_froglight", "pink_concrete", "pink_concrete_powder", "pink_glazed_terracotta", "pink_stained_glass", "pink_terracotta", "pink_wool", "podzol", "polished_andesite", "polished_basalt", "polished_blackstone", "polished_blackstone_bricks", "polished_deepslate", "polished_diorite", "polished_granite", "prismarine", "prismarine_bricks", "purple_concrete", "purple_concrete_powder", "purple_glazed_terracotta", "purple_stained_glass", "purple_terracotta", "purple_wool", "purpur_block", "purpur_pillar", "quartz_block", "quartz_bricks", "quartz_pillar", "raw_copper_block", "raw_gold_block", "raw_iron_block", "redstone_block", "redstone_lamp", "redstone_ore", "red_concrete", "red_concrete_powder", "red_glazed_terracotta", "red_mushroom_block", "red_nether_bricks", "red_sand", "red_sandstone", "red_stained_glass", "red_terracotta", "red_wool", "reinforced_deepslate", "rooted_dirt", "sand", "sandstone", "sculk", "sea_lantern", "shroomlight", "smithing_table", "smooth_basalt", "smooth_quartz", "smooth_red_sandstone", "smooth_sandstone", "smooth_stone", "snow_block", "soul_sand", "soul_soil", "sponge", "spruce_log", "spruce_planks", "spruce_wood", "stone", "stone_bricks", "stripped_acacia_log", "stripped_acacia_wood", "stripped_birch_log", "stripped_birch_wood", "stripped_crimson_hyphae", "stripped_crimson_stem", "stripped_dark_oak_log", "stripped_dark_oak_wood", "stripped_jungle_log", "stripped_jungle_wood", "stripped_mangrove_log", "stripped_mangrove_wood", "stripped_oak_log", "stripped_oak_wood", "stripped_spruce_log", "stripped_spruce_wood", "stripped_warped_hyphae", "stripped_warped_stem", "target", "terracotta", "tinted_glass", "tube_coral_block", "tuff", "verdant_froglight", "warped_hyphae", "warped_nylium", "warped_planks", "warped_stem", "warped_wart_block", "weathered_copper", "weathered_cut_copper", "wet_sponge", "white_concrete", "white_concrete_powder", "white_glazed_terracotta", "white_stained_glass", "white_terracotta", "white_wool", "yellow_concrete", "yellow_concrete_powder", "yellow_glazed_terracotta", "yellow_stained_glass", "yellow_terracotta", "yellow_wool"],
+schematic_friendly:["stone", "granite", "polished_granite", "diorite", "polished_diorite", "andesite", "polished_andesite", "dirt", "coarse_dirt", "podzol", "cobblestone", "oak_planks", "spruce_planks", "birch_planks", "jungle_planks", "acacia_planks", "dark_oak_planks", "bedrock", "sand", "red_sand", "gravel", "gold_ore", "iron_ore", "coal_ore", "oak_log", "spruce_log", "birch_log", "jungle_log", "sponge", "wet_sponge", "glass", "lapis_ore", "lapis_block", "sandstone", "chiseled_sandstone", "cut_sandstone", "note_block", "white_wool", "orange_wool", "magenta_wool", "light_blue_wool", "yellow_wool", "lime_wool", "pink_wool", "gray_wool", "light_gray_wool", "cyan_wool", "purple_wool", "blue_wool", "brown_wool", "green_wool", "red_wool", "black_wool", "gold_block", "iron_block", "smooth_stone", "bricks", "bookshelf", "mossy_cobblestone", "obsidian", "diamond_ore", "diamond_block", "crafting_table", "redstone_ore", "ice", "snow_block", "clay", "netherrack", "soul_sand", "glowstone", "white_stained_glass", "orange_stained_glass", "magenta_stained_glass", "yellow_stained_glass", "lime_stained_glass", "pink_stained_glass", "gray_stained_glass", "cyan_stained_glass", "purple_stained_glass", "blue_stained_glass", "brown_stained_glass", "green_stained_glass", "red_stained_glass", "black_stained_glass", "stone_bricks", "mossy_stone_bricks", "cracked_stone_bricks", "chiseled_stone_bricks", "brown_mushroom_block", "red_mushroom_block", "mycelium", "nether_bricks", "end_stone", "redstone_lamp", "emerald_ore", "emerald_block", "redstone_block", "nether_quartz_ore", "quartz_block", "chiseled_quartz_block", "white_terracotta", "orange_terracotta", "magenta_terracotta", "light_blue_terracotta", "yellow_terracotta", "lime_terracotta", "pink_terracotta", "gray_terracotta", "light_gray_terracotta", "cyan_terracotta", "purple_terracotta", "blue_terracotta", "brown_terracotta", "green_terracotta", "red_terracotta", "black_terracotta", "acacia_log", "dark_oak_log", "prismarine", "prismarine_bricks", "dark_prismarine", "sea_lantern", "hay_block", "terracotta", "coal_block", "packed_ice", "red_sandstone", "chiseled_red_sandstone", "smooth_red_sandstone", "purpur_block", "purpur_pillar", "end_stone_bricks", "magma_block", "nether_wart_block", "red_nether_bricks", "bone_block", "white_glazed_terracotta", "orange_glazed_terracotta", "magenta_glazed_terracotta", "light_blue_glazed_terracotta", "yellow_glazed_terracotta", "lime_glazed_terracotta", "pink_glazed_terracotta", "gray_glazed_terracotta", "cyan_glazed_terracotta", "purple_glazed_terracotta", "blue_glazed_terracotta", "brown_glazed_terracotta", "green_glazed_terracotta", "red_glazed_terracotta", "black_glazed_terracotta", "white_concrete", "orange_concrete", "magenta_concrete", "light_blue_concrete", "yellow_concrete", "lime_concrete", "pink_concrete", "gray_concrete", "light_gray_concrete", "cyan_concrete", "purple_concrete", "blue_concrete", "brown_concrete", "green_concrete", "red_concrete", "black_concrete", "white_concrete_powder", "orange_concrete_powder", "magenta_concrete_powder", "light_blue_concrete_powder", "yellow_concrete_powder", "lime_concrete_powder", "pink_concrete_powder", "gray_concrete_powder", "light_gray_concrete_powder", "cyan_concrete_powder", "purple_concrete_powder", "blue_concrete_powder", "brown_concrete_powder", "green_concrete_powder", "red_concrete_powder", "black_concrete_powder"],
+colourful:["black_concrete", "black_concrete_powder", "black_glazed_terracotta", "black_terracotta", "black_wool", "blue_concrete", "blue_concrete_powder", "blue_glazed_terracotta", "blue_terracotta", "blue_wool", "brown_concrete", "brown_concrete_powder", "brown_glazed_terracotta", "brown_terracotta", "brown_wool", "cyan_concrete", "cyan_concrete_powder", "cyan_glazed_terracotta", "cyan_terracotta", "cyan_wool", "gray_concrete", "gray_concrete_powder", "gray_glazed_terracotta", "gray_terracotta", "gray_wool", "green_concrete", "green_concrete_powder", "green_glazed_terracotta", "green_terracotta", "green_wool", "light_blue_concrete", "light_blue_concrete_powder", "light_blue_glazed_terracotta", "light_blue_terracotta", "light_blue_wool", "light_gray_concrete", "light_gray_concrete_powder", "light_gray_glazed_terracotta", "light_gray_terracotta", "light_gray_wool", "lime_concrete", "lime_concrete_powder", "lime_glazed_terracotta", "lime_terracotta", "lime_wool", "magenta_concrete", "magenta_concrete_powder", "magenta_glazed_terracotta", "magenta_terracotta", "magenta_wool", "orange_concrete", "orange_concrete_powder", "orange_glazed_terracotta", "orange_terracotta", "orange_wool", "pink_concrete", "pink_concrete_powder", "pink_glazed_terracotta", "pink_terracotta", "pink_wool", "purple_concrete", "purple_concrete_powder", "purple_glazed_terracotta", "purple_terracotta", "purple_wool", "red_concrete", "red_concrete_powder", "red_glazed_terracotta", "red_terracotta", "red_wool", "white_concrete", "white_concrete_powder", "white_glazed_terracotta", "white_terracotta", "white_wool", "yellow_concrete", "yellow_concrete_powder", "yellow_glazed_terracotta", "yellow_terracotta", "yellow_wool"],
+greyscale:["andesite", "basalt", "bedrock", "blackstone", "black_concrete", "black_concrete_powder", "black_terracotta", "black_wool", "bone_block", "chiseled_polished_blackstone", "chiseled_quartz_block", "chiseled_stone_bricks", "coal_block", "coal_ore", "cobblestone", "cracked_polished_blackstone_bricks", "cracked_stone_bricks", "cyan_terracotta", "dead_brain_coral_block", "dead_bubble_coral_block", "dead_fire_coral_block", "dead_horn_coral_block", "dead_tube_coral_block", "diorite", "gravel", "gray_concrete", "gray_concrete_powder", "gray_wool", "iron_block", "light_gray_concrete", "light_gray_concrete_powder", "light_gray_wool", "netherite_block", "polished_andesite", "polished_basalt", "polished_blackstone", "polished_blackstone_bricks", "polished_diorite", "quartz_block", "quartz_bricks", "quartz_pillar", "smooth_quartz", "smooth_stone", "snow_block", "stone", "stone_bricks", "white_concrete", "white_concrete_powder", "white_wool"],
+concrete:["black_concrete", "blue_concrete", "brown_concrete", "cyan_concrete", "gray_concrete", "green_concrete", "light_blue_concrete", "light_gray_concrete", "lime_concrete", "magenta_concrete", "orange_concrete", "pink_concrete", "purple_concrete", "red_concrete", "white_concrete", "yellow_concrete"],
+wool:["black_wool", "blue_wool", "brown_wool", "cyan_wool", "gray_wool", "green_wool", "light_blue_wool", "light_gray_wool", "lime_wool", "magenta_wool", "orange_wool", "pink_wool", "purple_wool", "red_wool", "white_wool", "yellow_wool"]};
+function hexRGB(h){return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];}
+
+/* ---------- state ---------- */
+const state = {
+  mesh:null,            // {tris:[{a,b,c,col:[r,g,b] 0..1}], min, max}
+  axis:'y', size:48, palette:'all', match:'redmean', dataver:3955,
+  result:null,          // {voxels:Map key->blockName, dims, min, used:Map name->{count,rgb}}
+  view:'voxel'
+};
+
+/* ---------- three.js scene ---------- */
+const canvas = document.getElementById('canvas');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#0b1220');
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
+scene.add(new THREE.AmbientLight(0xffffff,0.62));
+const key = new THREE.DirectionalLight(0xfff0d0,0.9); key.position.set(1,1.4,0.8); scene.add(key);
+const fill = new THREE.DirectionalLight(0x9bc4ff,0.35); fill.position.set(-1,0.4,-0.8); scene.add(fill);
+
+let grid=null, meshObj=null, voxelObj=null, target=new THREE.Vector3();
+// simple orbit (spherical)
+const orbit={theta:0.8,phi:1.0,r:80};
+function applyCam(){
+  camera.position.set(
+    target.x+orbit.r*Math.sin(orbit.phi)*Math.cos(orbit.theta),
+    target.y+orbit.r*Math.cos(orbit.phi),
+    target.z+orbit.r*Math.sin(orbit.phi)*Math.sin(orbit.theta));
+  camera.lookAt(target);
+}
+(function controls(){
+  let drag=false,px=0,py=0;
+  canvas.addEventListener('mousedown',e=>{drag=true;px=e.clientX;py=e.clientY;});
+  addEventListener('mouseup',()=>drag=false);
+  addEventListener('mousemove',e=>{ if(!drag)return;
+    orbit.theta-=(e.clientX-px)*0.008; orbit.phi-=(e.clientY-py)*0.008;
+    orbit.phi=Math.max(0.12,Math.min(Math.PI-0.12,orbit.phi)); px=e.clientX;py=e.clientY; });
+  canvas.addEventListener('wheel',e=>{e.preventDefault();orbit.r*=(1+Math.sign(e.deltaY)*0.1);
+    orbit.r=Math.max(6,Math.min(800,orbit.r));},{passive:false});
+})();
+function resize(){const w=canvas.clientWidth,h=canvas.clientHeight;
+  if(canvas.width!==w||canvas.height!==h){renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}}
+(function loop(){resize();applyCam();renderer.render(scene,camera);requestAnimationFrame(loop);})();
+
+/* ---------- grid plane ---------- */
+function buildGrid(span){
+  if(grid) scene.remove(grid);
+  const g=new THREE.Group();
+  const gh=new THREE.GridHelper(span, Math.max(4,Math.round(span/4)), 0x2a4670, 0x18294a);
+  gh.position.y=0; g.add(gh);
+  const plane=new THREE.Mesh(new THREE.PlaneGeometry(span,span),
+    new THREE.MeshBasicMaterial({color:0x0c1730,transparent:true,opacity:0.55}));
+  plane.rotation.x=-Math.PI/2; plane.position.y=-0.02; g.add(plane);
+  grid=g; scene.add(g);
+}
+
+/* ---------- built-in sample mesh (colorful, no upload needed) ---------- */
+function sampleMesh(){
+  const geo=new THREE.TorusKnotGeometry(10,3.2,160,24);
+  return geoToMesh(geo,(cx,cy,cz)=>{
+    const ang=(Math.atan2(cz,cx)/Math.PI+1)/2;          // hue around the knot
+    const c=new THREE.Color().setHSL(ang,0.62,0.55+cy*0.012);
+    return [c.r,c.g,c.b];
+  });
+}
+// convert a THREE geometry into our internal triangle list; colorFn(cx,cy,cz)->[r,g,b]
+function geoToMesh(geo, colorFn){
+  const pos=geo.attributes.position; const idx=geo.index?geo.index.array:null;
+  const tris=[]; const min=[1e9,1e9,1e9],max=[-1e9,-1e9,-1e9];
+  const V=i=>({x:pos.getX(i),y:pos.getY(i),z:pos.getZ(i)});
+  const count = idx?idx.length:pos.count;
+  for(let i=0;i<count;i+=3){
+    const ia=idx?idx[i]:i, ib=idx?idx[i+1]:i+1, ic=idx?idx[i+2]:i+2;
+    const a=V(ia),b=V(ib),c=V(ic);
+    const cx=(a.x+b.x+c.x)/3, cy=(a.y+b.y+c.y)/3, cz=(a.z+b.z+c.z)/3;
+    const col=colorFn?colorFn(cx,cy,cz):[0.7,0.7,0.7];
+    tris.push({a,b,c,col});
+    for(const p of [a,b,c]){min[0]=Math.min(min[0],p.x);min[1]=Math.min(min[1],p.y);min[2]=Math.min(min[2],p.z);
+      max[0]=Math.max(max[0],p.x);max[1]=Math.max(max[1],p.y);max[2]=Math.max(max[2],p.z);}
+  }
+  return {tris,min,max};
+}
+
+/* ---------- OBJ + MTL parsing ---------- */
+function parseMTL(text){
+  const mats={}; let cur=null;
+  text.split(/\r?\n/).forEach(line=>{
+    const p=line.trim().split(/\s+/);
+    if(p[0]==='newmtl'){cur=p[1];mats[cur]=[0.75,0.75,0.75];}
+    else if(p[0]==='Kd'&&cur){mats[cur]=[+p[1],+p[2],+p[3]];}
+  });
+  return mats;
+}
+function parseOBJ(text, mats){
+  const verts=[]; const tris=[]; const min=[1e9,1e9,1e9],max=[-1e9,-1e9,-1e9];
+  let curCol=[0.78,0.78,0.78];
+  const lines=text.split(/\r?\n/);
+  for(const line of lines){
+    const p=line.trim().split(/\s+/);
+    if(p[0]==='v'){const v={x:+p[1],y:+p[2],z:+p[3]};verts.push(v);
+      min[0]=Math.min(min[0],v.x);min[1]=Math.min(min[1],v.y);min[2]=Math.min(min[2],v.z);
+      max[0]=Math.max(max[0],v.x);max[1]=Math.max(max[1],v.y);max[2]=Math.max(max[2],v.z);}
+    else if(p[0]==='usemtl'&&mats&&mats[p[1]]){curCol=mats[p[1]];}
+    else if(p[0]==='f'){
+      const vi=p.slice(1).map(tok=>{let n=parseInt(tok.split('/')[0]);return n<0?verts.length+n:n-1;});
+      for(let k=1;k<vi.length-1;k++){           // fan triangulation
+        const a=verts[vi[0]],b=verts[vi[k]],c=verts[vi[k+1]];
+        if(a&&b&&c) tris.push({a,b,c,col:curCol.slice()});
+      }
+    }
+  }
+  return {tris,min,max};
+}
+
+/* ---------- voxelisation (surface sampling, OTS-style scale) ---------- */
+function voxelize(mesh, size, axis){
+  const dim=[mesh.max[0]-mesh.min[0],mesh.max[1]-mesh.min[1],mesh.max[2]-mesh.min[2]];
+  const ai={x:0,y:1,z:2}[axis];
+  const scale=(size-1)/(dim[ai]||1);
+  const tf=p=>({x:(p.x-mesh.min[0])*scale,y:(p.y-mesh.min[1])*scale,z:(p.z-mesh.min[2])*scale});
+  const acc=new Map();                          // key -> {r,g,b,n}
+  const dist=(u,v)=>Math.hypot(u.x-v.x,u.y-v.y,u.z-v.z);
+  for(const t of mesh.tris){
+    const A=tf(t.a),B=tf(t.b),C=tf(t.c);
+    const steps=Math.max(1,Math.ceil(Math.max(dist(A,B),dist(A,C),dist(B,C))*1.6));
+    for(let i=0;i<=steps;i++) for(let j=0;j<=steps-i;j++){
+      const u=i/steps, w=j/steps;
+      const x=Math.round(A.x+(B.x-A.x)*u+(C.x-A.x)*w);
+      const y=Math.round(A.y+(B.y-A.y)*u+(C.y-A.y)*w);
+      const z=Math.round(A.z+(B.z-A.z)*u+(C.z-A.z)*w);
+      const key=x+','+y+','+z;
+      let e=acc.get(key); if(!e){e={r:0,g:0,b:0,n:0};acc.set(key,e);}
+      e.r+=t.col[0];e.g+=t.col[1];e.b+=t.col[2];e.n++;
+    }
+  }
+  // colour-match each voxel
+  const names=PRESETS[state.palette];
+  const palRGB=names.map(n=>hexRGB(BLOCK_COLORS[n]));
+  const cache=new Map();
+  const matchFn=state.match;
+  function nearest(r,g,b){                       // r,g,b in 0..255
+    const ck=(r<<16)|(g<<8)|b; const hit=cache.get(ck); if(hit!==undefined)return hit;
+    let best=0,bd=Infinity;
+    for(let k=0;k<palRGB.length;k++){
+      const pr=palRGB[k][0],pg=palRGB[k][1],pb=palRGB[k][2];
+      let d;
+      if(matchFn==='redmean'){const rm=(r+pr)/2,dr=r-pr,dg=g-pg,db=b-pb;
+        d=(2+rm/256)*dr*dr+4*dg*dg+(2+(255-rm)/256)*db*db;}
+      else{const dr=r-pr,dg=g-pg,db=b-pb;d=dr*dr+dg*dg+db*db;}
+      if(d<bd){bd=d;best=k;}
+    }
+    cache.set(ck,best); return best;
+  }
+  const voxels=new Map(); const used=new Map();
+  const vmin=[1e9,1e9,1e9],vmax=[-1e9,-1e9,-1e9];
+  for(const [key,e] of acc){
+    const r=Math.round(e.r/e.n*255),g=Math.round(e.g/e.n*255),b=Math.round(e.b/e.n*255);
+    const bi=nearest(r,g,b); const name=names[bi];
+    voxels.set(key,name);
+    let u=used.get(name); if(!u){u={count:0,rgb:palRGB[bi]};used.set(name,u);} u.count++;
+    const [x,y,z]=key.split(',').map(Number);
+    vmin[0]=Math.min(vmin[0],x);vmin[1]=Math.min(vmin[1],y);vmin[2]=Math.min(vmin[2],z);
+    vmax[0]=Math.max(vmax[0],x);vmax[1]=Math.max(vmax[1],y);vmax[2]=Math.max(vmax[2],z);
+  }
+  const dims=[vmax[0]-vmin[0]+1,vmax[1]-vmin[1]+1,vmax[2]-vmin[2]+1];
+  return {voxels,dims,min:vmin,used};
+}
+
+/* ---------- render original mesh ---------- */
+function showMesh(mesh){
+  if(meshObj){scene.remove(meshObj);meshObj.geometry.dispose();meshObj=null;}
+  const g=new THREE.BufferGeometry();
+  const pos=[],col=[];
+  for(const t of mesh.tris){for(const p of [t.a,t.b,t.c]){pos.push(p.x,p.y,p.z);col.push(...t.col);}}
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  g.computeVertexNormals();
+  const dim=[mesh.max[0]-mesh.min[0],mesh.max[1]-mesh.min[1],mesh.max[2]-mesh.min[2]];
+  const m=new THREE.Mesh(g,new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.85,metalness:0.0,
+    side:THREE.DoubleSide,flatShading:false}));
+  // center on grid, sit on plane
+  m.position.set(-(mesh.min[0]+dim[0]/2),-mesh.min[1],-(mesh.min[2]+dim[2]/2));
+  meshObj=m; scene.add(m);
+}
+
+/* ---------- render voxels ---------- */
+function showVoxels(res){
+  if(voxelObj){scene.remove(voxelObj);voxelObj.geometry.dispose();voxelObj.dispose&&voxelObj.dispose();voxelObj=null;}
+  const n=res.voxels.size;
+  const geo=new THREE.BoxGeometry(1,1,1);
+  const mat=new THREE.MeshStandardMaterial({roughness:0.95,metalness:0.0});
+  const inst=new THREE.InstancedMesh(geo,mat,n);
+  const dummy=new THREE.Object3D(); const color=new THREE.Color();
+  const cx=res.min[0]+res.dims[0]/2, cz=res.min[2]+res.dims[2]/2;
+  let i=0;
+  for(const [key,name] of res.voxels){
+    const [x,y,z]=key.split(',').map(Number);
+    dummy.position.set(x-cx, y-res.min[1]+0.5, z-cz); dummy.updateMatrix();
+    inst.setMatrixAt(i,dummy.matrix);
+    const rgb=res.used.get(name).rgb; color.setRGB(rgb[0]/255,rgb[1]/255,rgb[2]/255);
+    inst.setColorAt(i,color); i++;
+  }
+  inst.instanceMatrix.needsUpdate=true; if(inst.instanceColor)inst.instanceColor.needsUpdate=true;
+  voxelObj=inst; scene.add(inst);
+}
+
+/* ---------- framing & view switch ---------- */
+function frame(span){buildGrid(Math.max(20,span*1.4)); target.set(0,span*0.35,0); orbit.r=span*1.9;}
+function setView(v){
+  state.view=v;
+  document.querySelectorAll('#view button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
+  if(meshObj)meshObj.visible=(v==='mesh');
+  if(voxelObj)voxelObj.visible=(v==='voxel');
+}
+
+/* ---------- the .schem writer (validated vs prismarine-nbt) ---------- */
+const T={End:0,Byte:1,Short:2,Int:3,ByteArray:7,String:8,Compound:10};
+function bw(){return {b:[],
+  u8(v){this.b.push(v&255);}, i16(v){this.u8(v>>8);this.u8(v);},
+  i32(v){this.u8(v>>24);this.u8(v>>16);this.u8(v>>8);this.u8(v);},
+  str(s){const e=new TextEncoder().encode(s);this.i16(e.length);for(const x of e)this.u8(x);} };}
+function buildSchem(res, dataVersion){
+  const [W,H,L]=res.dims;
+  // palette: air=0 then used blocks
+  const palette={'minecraft:air':0}; let id=1;
+  for(const name of res.used.keys()) palette['minecraft:'+name]=id++;
+  // cells in x + z*W + y*W*L order
+  const cells=new Array(W*H*L).fill(0);
+  for(const [key,name] of res.voxels){
+    let [x,y,z]=key.split(',').map(Number);
+    x-=res.min[0]; y-=res.min[1]; z-=res.min[2];
+    cells[x + z*W + y*W*L]=palette['minecraft:'+name];
+  }
+  // varint encode
+  const enc=[]; for(let v of cells){while((v&-128)!==0){enc.push((v&127)|128);v>>>=7;}enc.push(v);} 
+  const bd=enc.map(v=>v&255);
+  // NBT
+  const w=bw();
+  w.u8(T.Compound);w.str('Schematic');
+  w.u8(T.Int);w.str('Version');w.i32(2);
+  w.u8(T.Int);w.str('DataVersion');w.i32(dataVersion);
+  w.u8(T.Short);w.str('Width');w.i16(W);
+  w.u8(T.Short);w.str('Height');w.i16(H);
+  w.u8(T.Short);w.str('Length');w.i16(L);
+  const entries=Object.entries(palette);
+  w.u8(T.Int);w.str('PaletteMax');w.i32(entries.length);
+  w.u8(T.Compound);w.str('Palette');
+  for(const [name,pid] of entries){w.u8(T.Int);w.str(name);w.i32(pid);}
+  w.u8(T.End);
+  w.u8(T.ByteArray);w.str('BlockData');w.i32(bd.length);for(const x of bd)w.u8(x);
+  w.u8(T.End);
+  return pako.gzip(new Uint8Array(w.b));
+}
+
+/* ---------- UI wiring ---------- */
+const $=id=>document.getElementById(id);
+function toast(msg,kind){const t=$('toast');t.textContent=msg;t.className='toast show '+(kind||'');setTimeout(()=>t.className='toast',2200);}
+
+function updateLegend(res){
+  const items=[...res.used.entries()].sort((a,b)=>b[1].count-a[1].count);
+  const top=items.slice(0,7);
+  $('legend').style.display='block';
+  $('legendItems').innerHTML=top.map(([name,u])=>
+    `<div class="item"><span class="sw" style="background:rgb(${u.rgb.join(',')})"></span>${name.replace(/_/g,' ')} &middot; ${u.count}</div>`).join('')
+    + (items.length>7?`<div class="more">+ ${items.length-7} more blocks</div>`:'');
+}
+
+function runVoxelize(){
+  if(!state.mesh){toast('No model loaded','bad');return;}
+  const res=voxelize(state.mesh,state.size,state.axis);
+  state.result=res;
+  showVoxels(res);
+  setView('voxel');
+  frame(Math.max(...res.dims));
+  $('cDims').textContent=res.dims.join(' × ');
+  $('cBlocks').textContent=res.voxels.size.toLocaleString();
+  $('cPal').textContent=res.used.size+' types';
+  updateLegend(res);
+  $('export').disabled=false;
+}
+
+function loadMesh(mesh){
+  state.mesh=mesh; showMesh(mesh);
+  const dim=Math.max(mesh.max[0]-mesh.min[0],mesh.max[1]-mesh.min[1],mesh.max[2]-mesh.min[2]);
+  frame(dim);
+}
+
+/* sliders / segments */
+$('size').addEventListener('input',e=>{state.size=+e.target.value;$('sizeVal').textContent=e.target.value;});
+$('axis').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  state.axis=b.dataset.a;[...e.currentTarget.children].forEach(x=>x.classList.toggle('on',x===b));});
+$('match').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  state.match=b.dataset.m;[...e.currentTarget.children].forEach(x=>x.classList.toggle('on',x===b));});
+$('view').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setView(b.dataset.v);});
+$('palette').addEventListener('change',e=>state.palette=e.target.value);
+$('dataver').addEventListener('change',e=>state.dataver=+e.target.value);
+$('voxelize').addEventListener('click',runVoxelize);
+
+$('export').addEventListener('click',()=>{
+  if(!state.result){toast('Voxelize first','bad');return;}
+  try{
+    const bytes=buildSchem(state.result,state.dataver);
+    const blob=new Blob([bytes],{type:'application/octet-stream'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+    a.download='voxelforge.schem';a.click();URL.revokeObjectURL(a.href);
+    toast('Exported voxelforge.schem  ('+(bytes.length/1024).toFixed(1)+' KB)','good');
+  }catch(err){console.error(err);toast('Export failed: '+err.message,'bad');}
+});
+
+/* file loading */
+const drop=$('drop'), fileInput=$('file');
+drop.addEventListener('click',()=>fileInput.click());
+fileInput.addEventListener('change',e=>handleFiles(e.target.files));
+['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('hot');}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('hot');}));
+drop.addEventListener('drop',e=>handleFiles(e.dataTransfer.files));
+canvas.addEventListener('dragover',e=>e.preventDefault());
+canvas.addEventListener('drop',e=>{e.preventDefault();handleFiles(e.dataTransfer.files);});
+
+async function handleFiles(files){
+  files=[...files]; const obj=files.find(f=>f.name.toLowerCase().endsWith('.obj'));
+  const mtl=files.find(f=>f.name.toLowerCase().endsWith('.mtl'));
+  if(!obj){toast('Need a .obj file','bad');return;}
+  let mats=null;
+  if(mtl) mats=parseMTL(await mtl.text());
+  const mesh=parseOBJ(await obj.text(),mats);
+  if(!mesh.tris.length){toast('No faces found in OBJ','bad');return;}
+  loadMesh(mesh);
+  $('fname').textContent=obj.name+(mtl?'  + '+mtl.name:'  (no .mtl, flat colour)');
+  toast('Loaded '+mesh.tris.length.toLocaleString()+' triangles','good');
+}
+
+/* boot: load sample + voxelize so it is not empty */
+loadMesh(sampleMesh());
+runVoxelize();
+</script>
+</body>
+</html>
