@@ -199,6 +199,7 @@
       <div class="group">
         <button class="btn primary" id="voxelize" style="margin-bottom:9px">Voxelize</button>
         <button class="btn ghost" id="export" disabled>Export .schem</button>
+        <button class="btn ghost" id="clear" style="margin-top:9px">Clear model</button>
       </div>
     </div>
 
@@ -883,6 +884,18 @@ function loadMesh(mesh){
   frame(dim);
 }
 
+function clearAll(){
+  if(meshObj){scene.remove(meshObj);meshObj.geometry.dispose();meshObj=null;}
+  if(voxelObj){scene.remove(voxelObj);voxelObj.geometry.dispose();voxelObj=null;}
+  state.mesh=null; state.result=null;
+  $('cDims').textContent='—'; $('cBlocks').textContent='—'; $('cPal').textContent='—';
+  $('legend').style.display='none';
+  $('export').disabled=true;
+  $('fname').textContent='no model loaded';
+  buildGrid(40); target.set(0,4,0);
+  toast('Cleared','good');
+}
+
 /* sliders / segments */
 $('size').addEventListener('input',e=>{state.size=+e.target.value;$('sizeVal').textContent=e.target.value;});
 $('axis').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
@@ -893,6 +906,7 @@ $('view').addEventListener('click',e=>{const b=e.target.closest('button');if(b)s
 $('palette').addEventListener('change',e=>state.palette=e.target.value);
 $('dataver').addEventListener('change',e=>state.dataver=+e.target.value);
 $('voxelize').addEventListener('click',runVoxelize);
+$('clear').addEventListener('click',clearAll);
 
 $('export').addEventListener('click',()=>{
   if(!state.result){toast('Voxelize first','bad');return;}
